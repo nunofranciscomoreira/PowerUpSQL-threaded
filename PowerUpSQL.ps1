@@ -1,5 +1,4 @@
-﻿#requires -version 2
-<#
+﻿<#
         File: PowerUpSQL.ps1
         Author: Scott Sutherland (@_nullbind), NetSPI - 2020
         Major Contributors: Antti Rantasaari and Eric Gruber
@@ -15430,7 +15429,7 @@ Function Get-SQLServerLinkCrawlThreaded{
 
         [Parameter(Mandatory=$false,
         HelpMessage="Number of Threads.")]
-        [int]$Threads = 2,
+        [int]$Threads = 5,
 
         [Parameter(Mandatory=$false,
         HelpMessage="Custom SQL query to run. If QueryTarget isn's given, this will run on each server.")]
@@ -15607,53 +15606,47 @@ Function Get-SQLServerLinkDataThreaded{
 
     Process
     {
-        $MyScriptBlock = {
-            $SqlInfoTable = Get-SQLQueryThreaded -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlInfoQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
-            if($SqlInfoTable.Servername -ne $null){
-                $Server.Instance = $SqlInfoTable.Servername
-                $Server.Version = [System.String]::Join("",(($SqlInfoTable.Version)[10..25]))
-                $Server.Sysadmin = $sqlInfoTable.role
-                $Server.User = $sqlInfoTable.linkuser
-                
-                if($List.Count -eq 1) { $Server.Path += ,$sqlInfoTable.servername }
-    
-                $SqlInfoTable = Get-SqlQueryThreaded -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlLinksQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
-                $Server.Links = [array]$SqlInfoTable.srvname
-    
-                if($Query -ne ""){
-                    if($QueryTarget -eq "" -or ($QueryTarget -ne "" -and $Server.Instance -eq $QueryTarget)){
-                        if($Query -like '*xp_cmdshell*'){
-                            $Query =  $Query + " WITH RESULT SETS ((output VARCHAR(8000)))"
-                        }
-                        if($Query -like '*xp_dirtree*'){
-                            $Query = $Query + "  WITH RESULT SETS ((output VARCHAR(8000), depth int))"
-                        }
-                        $SqlInfoTable = Get-SqlQueryThreaded -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $Query)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
-                        if($Query -like '*WITH RESULT SETS*'){
-                            $Server.CustomQuery = $SqlInfoTable.output
-                        } else {
-                            $Server.CustomQuery = $SqlInfoTable
-                        }
-                    }
-                }
-    
-                if(($Server.Path | Sort-Object | Get-Unique).Count -eq ($Server.Path).Count){
-                    foreach($Link in $Server.Links){
-                        $Linkpath = $Server.Path + $Link
-                        $List += ,(New-Object PSObject -Property @{ Instance=""; Version=""; Links=@(); Path=$Linkpath; User=""; Sysadmin=""; CustomQuery="" })
-                    }
-                }
-            } else {
-                $Server.Instance = "Broken Link"
-            }
-            #return $List
-        }
         
-        
-        # Run scriptblock using multi-threading
-        $PipelineItems | Invoke-Parallel -ScriptBlock $MyScriptBlock -ImportSessionFunctions -ImportVariables -Throttle $Threads -RunspaceTimeout 2 -Quiet -ErrorAction SilentlyContinue
+        $SqlInfoTable = Get-SQLQueryThreaded -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlInfoQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
+        if($SqlInfoTable.Servername -ne $null){
+            $Server.Instance = $SqlInfoTable.Servername
+            $Server.Version = [System.String]::Join("",(($SqlInfoTable.Version)[10..25]))
+            $Server.Sysadmin = $sqlInfoTable.role
+            $Server.User = $sqlInfoTable.linkuser
+            
+            if($List.Count -eq 1) { $Server.Path += ,$sqlInfoTable.servername }
 
+            $SqlInfoTable = Get-SqlQueryThreaded -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlLinksQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
+            $Server.Links = [array]$SqlInfoTable.srvname
+
+            if($Query -ne ""){
+                if($QueryTarget -eq "" -or ($QueryTarget -ne "" -and $Server.Instance -eq $QueryTarget)){
+                    if($Query -like '*xp_cmdshell*'){
+                        $Query =  $Query + " WITH RESULT SETS ((output VARCHAR(8000)))"
+                    }
+                    if($Query -like '*xp_dirtree*'){
+                        $Query = $Query + "  WITH RESULT SETS ((output VARCHAR(8000), depth int))"
+                    }
+                    $SqlInfoTable = Get-SqlQueryThreaded -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $Query)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
+                    if($Query -like '*WITH RESULT SETS*'){
+                        $Server.CustomQuery = $SqlInfoTable.output
+                    } else {
+                        $Server.CustomQuery = $SqlInfoTable
+                    }
+                }
+            }
+
+            if(($Server.Path | Sort-Object | Get-Unique).Count -eq ($Server.Path).Count){
+                foreach($Link in $Server.Links){
+                    $Linkpath = $Server.Path + $Link
+                    $List += ,(New-Object PSObject -Property @{ Instance=""; Version=""; Links=@(); Path=$Linkpath; User=""; Sysadmin=""; CustomQuery="" })
+                }
+            }
+        } else {
+            $Server.Instance = "Broken Link"
+        }
         return $List
+    
     }
 }
 
